@@ -8,7 +8,7 @@ depsjl = joinpath(dirname(@__FILE__), "..", "deps", "deps.jl")
 isfile(depsjl) ? include(depsjl) : error("Cairo not properly ",
     "installed. Please run\nPkg.build(\"Cairo\")")
 
-using Colors
+using Colors, Fontconfig
 
 importall Graphics
 import Base: copy
@@ -67,8 +67,10 @@ export
     text,
     update_layout, show_layout, get_layout_size, layout_text,
     set_text, set_latex,
-    set_font_face, set_font_size, select_font_face,
-    textwidth, textheight, text_extents,
+    set_font_face, set_font_size,
+    textwidth, textheight, text_extents, select_font_face,
+    cairo_ft_font_face_create_for_pattern,
+    
     TeXLexer, tex2pango, show_text, text_path,
 
     # images
@@ -375,17 +377,31 @@ end
 type CairoContext <: GraphicsContext
     ptr::Ptr{Void}
     surface::CairoSurface
+    pangoctx::Ptr{Void} # cache PangoContext
     layout::Ptr{Void} # cache PangoLayout
 
     function CairoContext(surface::CairoSurface)
         ptr = ccall((:cairo_create,_jl_libcairo),
                     Ptr{Void}, (Ptr{Void},), surface.ptr)
+        # must be before layout is created      
+        surfacetype = ccall((:cairo_surface_get_type,_jl_libcairo),
+        	Int64,(Ptr{Void},),surface.ptr)
+        if surfacetype == 1
+        	pangoctx = ccall((:pango_cairo_create_context,_jl_libpangocairo),
+        			Ptr{Void},(Ptr{Void},),ptr);
+        	fontmap = ccall((:pango_context_get_font_map,_jl_libpangocairo),
+        			Ptr{Void},(Ptr{Void},),pangoctx);
+        	ccall((:pango_cairo_font_map_set_resolution,_jl_libpangocairo),
+        		Void,(Ptr{Void},Float64),fontmap,72.0)
+        	ccall((:g_object_unref,_jl_libgobject),Void,(Ptr{Void},),pangoctx) 
+        end
         layout = ccall((:pango_cairo_create_layout,_jl_libpangocairo),
                        Ptr{Void}, (Ptr{Void},), ptr)
-        self = new(ptr, surface, layout)
+        self = new(ptr, surface, pangoctx, layout)
         finalizer(self, destroy)
         self
     end
+    #=
     function CairoContext(ptr::Ptr{Void})
         ccall((:cairo_reference,_jl_libcairo),
                    Ptr{Void}, (Ptr{Void},), ptr)
@@ -398,8 +414,7 @@ type CairoContext <: GraphicsContext
         finalizer(self, destroy)
         self
     end
-
-
+		=#
 end
 
 creategc(s::CairoSurface) = CairoContext(s)
@@ -892,12 +907,51 @@ function set_font_face(ctx::CairoContext, str::AbstractString)
           (Ptr{Void},), fontdesc)
 end
 
+function set_font_face(ctx::CairoContext, pat::Fontconfig.Pattern)
+		fontdesc = ccall((:pango_layout_get_font_description,_jl_libpangoft2), Ptr{Void},
+          (Ptr{Void},), ctx.layout)
+    if fontdesc != Ptr{Void}(0)
+      size = ccall((:pango_font_description_get_size,_jl_libpangoft2), Int64, 
+    			(Ptr{Void},), fontdesc)
+    else
+    	size = 12*1024;
+    end
+    fontdesc = ccall((:pango_fc_font_description_from_pattern,_jl_libpangoft2),
+                     Ptr{Void}, (Ptr{Void},Int64), pat.ptr, 0)
+    ccall((:pango_layout_set_font_description,_jl_libpangoft2), Void,
+          (Ptr{Void},Ptr{Void}), ctx.layout, fontdesc)
+    ccall((:pango_font_description_free,_jl_libpangoft2), Void,
+          (Ptr{Void},), fontdesc);
+    fontdesc = ccall((:pango_layout_get_font_description,_jl_libpangoft2), Ptr{Void},
+          (Ptr{Void},), ctx.layout)
+    ccall((:pango_font_description_set_size,_jl_libpangoft2), Void, 
+    			(Ptr{Void}, Int64), fontdesc, size)
+end
+
+function set_font_size(ctx::CairoContext, size::Float64)
+    fontdesc = ccall((:pango_layout_get_font_description,_jl_libpangoft2), Ptr{Void},
+          (Ptr{Void},), ctx.layout)
+    if fontdesc == Ptr{Void}(0)
+    	fontdesc = ccall((:pango_font_description_from_string,_jl_libpangoft2),
+                     Ptr{Void}, (Ptr{UInt8},), @compat(String("Helvetica")));
+      ccall((:pango_layout_set_font_description,_jl_libpangoft2), Void,
+          (Ptr{Void},Ptr{Void}), ctx.layout, fontdesc)
+      ccall((:pango_font_description_free,_jl_libpangoft2), Void,
+          (Ptr{Void},), fontdesc)
+      fontdesc = ccall((:pango_layout_get_font_description,_jl_libpangoft2), Ptr{Void},
+          (Ptr{Void},), ctx.layout)
+    end
+    ccall((:pango_font_description_set_size,_jl_libpangoft2), Void, 
+    			(Ptr{Void}, Int64), fontdesc, Int64(round(size*1024)))
+end
+
+
 function set_text(ctx::CairoContext, text::AbstractString, markup::Bool = false)
     if markup
-        ccall((:pango_layout_set_markup,_jl_libpango), Void,
+        ccall((:pango_layout_set_markup,_jl_libpangoft2), Void,
             (Ptr{Void},Ptr{UInt8},Int32), ctx.layout, @compat(String(text)), -1)
     else
-        ccall((:pango_layout_set_text,_jl_libpango), Void,
+        ccall((:pango_layout_set_text,_jl_libpangoft2), Void,
             (Ptr{Void},Ptr{UInt8},Int32), ctx.layout, @compat(String(text)), -1)
     end
     text
@@ -905,7 +959,7 @@ end
 
 function get_layout_size(ctx::CairoContext)
     w = Array(Int32,2)
-    ccall((:pango_layout_get_pixel_size,_jl_libpango), Void,
+    ccall((:pango_layout_get_pixel_size,_jl_libpangoft2), Void,
           (Ptr{Void},Ptr{Int32},Ptr{Int32}), ctx.layout, pointer(w,1), pointer(w,2))
     w
 end
@@ -956,6 +1010,11 @@ function text_path(ctx::CairoContext,value::AbstractString)
           ctx.ptr, @compat(String(value)))
 end
 
+function cairo_ft_font_face_create_for_pattern(pat::Fontconfig.Pattern)
+		ccall((:cairo_ft_font_face_create_for_pattern,Cairo._jl_libcairo),
+			Ptr{Void},(Ptr{Void},), pat.ptr, ff);
+		return ff;
+end
 
 function select_font_face(ctx::CairoContext,family::AbstractString,slant,weight)
     ccall((:cairo_select_font_face, _jl_libcairo),

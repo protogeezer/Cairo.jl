@@ -16,13 +16,14 @@ deps = [
     fontconfig = library_dependency("fontconfig", aliases = ["libfontconfig-1", "libfontconfig", "libfontconfig.so.1"], depends = [freetype], runtime = false, group = group)
     cairo = library_dependency("cairo", aliases = ["libcairo-2", "libcairo","libcairo.so.2", "libcairo2"], depends = [gobject,fontconfig,libpng], group = group)
     pango = library_dependency("pango", aliases = ["libpango-1.0-0", "libpango-1.0","libpango-1.0.so.0", "libpango-1_0-0"], group = group)
+    pangoft2 = library_dependency("pangoft2", aliases = ["libpangoft2-1.0-0", "libpangoft2-1.0","libpangoft2-1.0.so.0", "libpangoft2-1_0-0"], group = group)
     pangocairo = library_dependency("pangocairo", aliases = ["libpangocairo-1.0-0", "libpangocairo-1.0", "libpangocairo-1.0.so.0"], depends = [cairo], group = group)
     zlib = library_dependency("zlib", aliases = ["libzlib","zlib1"], os = :Windows, group = group)
 ]
 
 if is_windows()
     using WinRPM
-    provides(WinRPM.RPM,"libpango-1_0-0",[pango,pangocairo],os = :Windows)
+    provides(WinRPM.RPM,"libpango-1_0-0",[pango,pangoft2,pangocairo],os = :Windows)
     provides(WinRPM.RPM,["glib2", "libgobject-2_0-0"],gobject,os = :Windows)
     provides(WinRPM.RPM,"zlib-devel",zlib,os = :Windows)
     provides(WinRPM.RPM,["libcairo2","libharfbuzz0"],cairo,os = :Windows)
@@ -34,7 +35,7 @@ if is_apple()
     end
     using Homebrew
     provides( Homebrew.HB, "cairo", cairo, os = :Darwin )
-    provides( Homebrew.HB, "pango", [pango, pangocairo], os = :Darwin, onload =
+    provides( Homebrew.HB, "pango", [pango, pangoft2, pangocairo], os = :Darwin, onload =
     """
     function __init__()
         ENV["PANGO_SYSCONFDIR"] = joinpath("$(Homebrew.prefix())", "etc")
@@ -54,7 +55,7 @@ provides(AptGet,
     @compat Dict(
         "libcairo2" => cairo,
         "libfontconfig1" => fontconfig,
-        "libpango1.0-0" => [pango,pangocairo],
+        "libpango1.0-0" => [pango,pangoft2, pangocairo],
         "libglib2.0-0" => gobject,
         "libpng12-0" => libpng,
         "libpixman-1-0" => pixman,
@@ -66,7 +67,7 @@ provides(Yum,
     @compat Dict(
         "cairo" => cairo,
         "fontconfig" => fontconfig,
-        "pango" => [pango,pangocairo],
+        "pango" => [pango,pangoft2, pangocairo],
         "glib2" => gobject,
         "libpng" => libpng,
         "gettext-libs" => gettext
@@ -76,7 +77,7 @@ provides(Zypper,
     @compat Dict(
         "libcairo" => cairo,
         "libfontconfig" => fontconfig,
-        "libpango-1.0" => [pango,pangocairo],
+        "libpango-1.0" => [pango,pangoft2,pangocairo],
         "libglib-2.0" => gobject,
         "libpng12" => libpng,
         "libpixman-1" => pixman,
@@ -95,7 +96,7 @@ provides(Sources,
         URI("ftp://ftp.simplesystems.org/pub/libpng/png/src/history/libpng15/libpng-$(png_version).tar.gz") => libpng,
         URI("ftp://sourceware.org/pub/libffi/libffi-3.0.11.tar.gz") => libffi,
         URI("http://ftp.gnome.org/pub/gnome/sources/glib/2.34/glib-2.34.3.tar.xz") => gobject,
-        URI("http://ftp.gnome.org/pub/GNOME/sources/pango/1.32/pango-1.32.6.tar.xz") => [pango,pangocairo],
+        URI("http://ftp.gnome.org/pub/GNOME/sources/pango/1.32/pango-1.32.6.tar.xz") => [pango,pangoft2,pangocairo],
         URI("http://zlib.net/zlib-1.2.7.tar.gz") => zlib
     ))
 
@@ -113,7 +114,7 @@ provides(BuildProcess,
         Autotools(libtarget = "gettext-tools/gnulib-lib/.libs/libgettextlib.la") => gettext,
         Autotools(libtarget = "libffi.la") => libffi,
         Autotools(libtarget = "gobject/libgobject-2.0.la") => gobject,
-        Autotools(libtarget = "pango/libpango-1.0.la") => [pango,pangocairo]
+        Autotools(libtarget = "pango/libpango-1.0.la") => [pango,pangoft2,pangocairo]
     ))
 
 provides(BuildProcess,Autotools(libtarget = "libpng15.la"),libpng,os = :Unix)
@@ -154,4 +155,5 @@ provides(BuildProcess,
 @BinDeps.install Dict([(:gobject, :_jl_libgobject),
                        (:cairo, :_jl_libcairo),
                        (:pango, :_jl_libpango),
+                       (:pangoft2, :_jl_libpangoft2),
                        (:pangocairo, :_jl_libpangocairo)])
