@@ -8,7 +8,7 @@ depsjl = joinpath(dirname(@__FILE__), "..", "deps", "deps.jl")
 isfile(depsjl) ? include(depsjl) : error("Cairo not properly ",
     "installed. Please run\nPkg.build(\"Cairo\")")
 
-using Colors, Fontconfig
+using Colors, Fontconfig, Measures
 
 importall Graphics
 import Base: copy
@@ -24,12 +24,13 @@ export
     # surface constructors
     CairoRGBSurface, CairoPDFSurface, CairoEPSSurface, CairoXlibSurface,
     CairoARGBSurface, CairoSVGSurface, CairoImageSurface, CairoQuartzSurface,
-    CairoWin32Surface,
+    CairoWin32Surface, CairoRecordingSurface,
     surface_create_similar,
 
     # surface and context management
     finish, destroy, status, get_source,
     creategc, getgc, save, restore, show_page, width, height,
+    recording_surface_ink_extents, recording_surface_get_extents,
 
     # pattern
     pattern_create_radial, pattern_create_linear,
@@ -211,6 +212,37 @@ format(::Type{RGB24}) = FORMAT_RGB24
 format(::Type{ARGB32}) = FORMAT_ARGB32
 format{T<:@compat(Union{RGB24,ARGB32})}(surf::CairoSurface{T}) = T
 
+## Recording ##
+
+const recording_surface_dpi = 96.0;
+
+function CairoRecordingSurface(w::Real, h::Real)
+		CAIRO_CONTENT_COLOR_ALPHA	= 0x3000
+		# pixels @ 96 dpi
+		w_pixels = ceil(recording_surface_dpi*w/72.0);
+		h_pixels = ceil(recording_surface_dpi*h/72.0);
+		extents = [0.0, 0.0, w_pixels, h_pixels];
+    ptr = ccall((:cairo_recording_surface_create,_jl_libcairo), Ptr{Void},
+                (Cint, Ptr{Float64}), CAIRO_CONTENT_COLOR_ALPHA, extents)
+    CairoSurface(ptr, w_pixels, h_pixels)
+end
+
+function recording_surface_ink_extents(surface::CairoSurface)
+	x0 = zeros(1); y0 = zeros(1); width = zeros(1); height = zeros(1);
+	res = ccall((:cairo_recording_surface_ink_extents,_jl_libcairo),
+	Cint,(Ptr{Void},Ptr{Float64},Ptr{Float64},Ptr{Float64},Ptr{Float64}),
+	surface.ptr,x0,y0,width,height)
+	extents = [x0[1],y0[1],width[1],height[1]];
+	extents
+end
+
+function recording_surface_get_extents(surface::CairoSurface)
+	extents = zeros(Float64,4);
+	res = ccall((:cairo_recording_surface_get_extents,_jl_libcairo),
+	Cint,(Ptr{Void},Ptr{Float64}),surface.ptr,extents)
+	extents
+end
+		
 ## PDF ##
 
 function CairoPDFSurface(stream::IOStream, w::Real, h::Real)
@@ -386,9 +418,12 @@ type CairoContext <: GraphicsContext
         # must be before layout is created      
         surfacetype = ccall((:cairo_surface_get_type,_jl_libcairo),
         	Int64,(Ptr{Void},),surface.ptr)
-        if surfacetype == 1
-        	pangoctx = ccall((:pango_cairo_create_context,_jl_libpangocairo),
+        pangoctx = ccall((:pango_cairo_create_context,_jl_libpangocairo),
         			Ptr{Void},(Ptr{Void},),ptr);
+        if surfacetype == CAIRO_SURFACE_TYPE_PDF ||
+           surfacetype == CAIRO_SURFACE_TYPE_PS  ||
+           #surfacetype == CAIRO_SURFACE_TYPE_RECORDING ||
+           surfacetype == CAIRO_SURFACE_TYPE_SVG
         	fontmap = ccall((:pango_context_get_font_map,_jl_libpangocairo),
         			Ptr{Void},(Ptr{Void},),pangoctx);
         	ccall((:pango_cairo_font_map_set_resolution,_jl_libpangocairo),
@@ -401,20 +436,6 @@ type CairoContext <: GraphicsContext
         finalizer(self, destroy)
         self
     end
-    #=
-    function CairoContext(ptr::Ptr{Void})
-        ccall((:cairo_reference,_jl_libcairo),
-                   Ptr{Void}, (Ptr{Void},), ptr)
-        surface_p = ccall((:cairo_get_target,_jl_libcairo),
-                   Ptr{Void}, (Ptr{Void},), ptr)
-        surface = CairoSurface(surface_p)
-        layout = ccall((:pango_cairo_create_layout,_jl_libpangocairo),
-                  Ptr{Void}, (Ptr{Void},), ptr)
-        self = new(ptr,surface,layout)
-        finalizer(self, destroy)
-        self
-    end
-		=#
 end
 
 creategc(s::CairoSurface) = CairoContext(s)
