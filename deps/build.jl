@@ -89,8 +89,7 @@ const png_version = "1.5.14"
 provides(Sources,
     @compat Dict(
         URI("http://www.cairographics.org/releases/pixman-0.28.2.tar.gz") => pixman,
-        #URI("http://www.cairographics.org/releases/cairo-1.12.16.tar.xz") => cairo,
-        URI("file:///Users/sjbespa/work/cairo-1.16.0-master.tar.xz") => cairo,
+        URI("http://www.cairographics.org/releases/cairo-1.12.16.tar.xz") => cairo,
         URI("http://download.savannah.gnu.org/releases/freetype/freetype-2.4.11.tar.gz") => freetype,
         URI("http://www.freedesktop.org/software/fontconfig/release/fontconfig-2.10.2.tar.gz") => fontconfig,
         URI("http://ftp.gnu.org/pub/gnu/gettext/gettext-0.18.2.tar.gz") => gettext,
