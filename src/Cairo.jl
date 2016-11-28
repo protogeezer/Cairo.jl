@@ -214,7 +214,7 @@ format{T<:@compat(Union{RGB24,ARGB32})}(surf::CairoSurface{T}) = T
 
 ## Recording ##
 
-const recording_surface_dpi = 96.0;
+const recording_surface_dpi = 72.0;
 
 function CairoRecordingSurface(w::Real, h::Real)
 		CAIRO_CONTENT_COLOR_ALPHA	= 0x3000
@@ -422,7 +422,7 @@ type CairoContext <: GraphicsContext
         			Ptr{Void},(Ptr{Void},),ptr);
         if surfacetype == CAIRO_SURFACE_TYPE_PDF ||
            surfacetype == CAIRO_SURFACE_TYPE_PS  ||
-           #surfacetype == CAIRO_SURFACE_TYPE_RECORDING ||
+           surfacetype == CAIRO_SURFACE_TYPE_RECORDING ||
            surfacetype == CAIRO_SURFACE_TYPE_SVG
         	fontmap = ccall((:pango_context_get_font_map,_jl_libpangocairo),
         			Ptr{Void},(Ptr{Void},),pangoctx);
