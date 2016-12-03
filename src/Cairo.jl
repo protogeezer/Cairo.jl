@@ -223,7 +223,7 @@ function CairoRecordingSurface(w::Real, h::Real)
 		h_pixels = ceil(recording_surface_dpi*h/72.0);
 		extents = [0.0, 0.0, w_pixels, h_pixels];
     ptr = ccall((:cairo_recording_surface_create,_jl_libcairo), Ptr{Void},
-                (Cint, Ptr{Float64}), CAIRO_CONTENT_COLOR_ALPHA, extents)
+                (Cint, Ptr{Float64}), CAIRO_CONTENT_COLOR_ALPHA, C_NULL)
     CairoSurface(ptr, w_pixels, h_pixels)
 end
 
@@ -236,11 +236,21 @@ function recording_surface_ink_extents(surface::CairoSurface)
 	extents
 end
 
+immutable CairoRectangle
+    x::Float64
+    y::Float64
+    width::Float64
+    height::Float64
+end
+
+CairoRectangle() = CairoRectangle(0.0, 0.0, 0.0, 0.0)
+
 function recording_surface_get_extents(surface::CairoSurface)
-	extents = zeros(Float64,4);
+	extents = [CairoRectangle()];
 	res = ccall((:cairo_recording_surface_get_extents,_jl_libcairo),
 	Cint,(Ptr{Void},Ptr{Float64}),surface.ptr,extents)
-	extents
+	println("get_extents = ",res)
+	extents[1]
 end
 		
 ## PDF ##
@@ -422,8 +432,13 @@ type CairoContext <: GraphicsContext
         			Ptr{Void},(Ptr{Void},),ptr);
         if surfacetype == CAIRO_SURFACE_TYPE_PDF ||
            surfacetype == CAIRO_SURFACE_TYPE_PS  ||
-           surfacetype == CAIRO_SURFACE_TYPE_RECORDING ||
            surfacetype == CAIRO_SURFACE_TYPE_SVG
+        	fontmap = ccall((:pango_context_get_font_map,_jl_libpangocairo),
+        			Ptr{Void},(Ptr{Void},),pangoctx);
+        	ccall((:pango_cairo_font_map_set_resolution,_jl_libpangocairo),
+        		Void,(Ptr{Void},Float64),fontmap,72.0)
+        	ccall((:g_object_unref,_jl_libgobject),Void,(Ptr{Void},),pangoctx) 
+        elseif surfacetype == CAIRO_SURFACE_TYPE_RECORDING 
         	fontmap = ccall((:pango_context_get_font_map,_jl_libpangocairo),
         			Ptr{Void},(Ptr{Void},),pangoctx);
         	ccall((:pango_cairo_font_map_set_resolution,_jl_libpangocairo),
